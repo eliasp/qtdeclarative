@@ -40,6 +40,7 @@
 #include "qv4compilationunitmapper_p.h"
 
 #include "qv4executablecompilationunit_p.h"
+#include <QCryptographicHash>
 #include <QScopeGuard>
 #include <QFileInfo>
 #include <QDateTime>
@@ -48,6 +49,68 @@
 QT_BEGIN_NAMESPACE
 
 using namespace QV4;
+
+CompiledData::Unit *CompilationUnitMapper::open(const QString &cacheFileName, const QCryptographicHash &sourceHash, QString *errorString)
+{
+    close();
+
+    // ### TODO: fix up file encoding/normalization/unc handling once QFileSystemEntry
+    // is exported from QtCore.
+    HANDLE handle =
+#if defined(Q_OS_WINRT)
+        CreateFile2(reinterpret_cast<const wchar_t*>(cacheFileName.constData()),
+                   GENERIC_READ | GENERIC_EXECUTE, FILE_SHARE_READ,
+                   OPEN_EXISTING, nullptr);
+#else
+        CreateFile(reinterpret_cast<const wchar_t*>(cacheFileName.constData()),
+                   GENERIC_READ | GENERIC_EXECUTE, FILE_SHARE_READ,
+                   nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+                   nullptr);
+#endif
+    if (handle == INVALID_HANDLE_VALUE) {
+        *errorString = qt_error_string(GetLastError());
+        return nullptr;
+    }
+
+    auto fileHandleCleanup = qScopeGuard([handle]{
+        CloseHandle(handle);
+    });
+
+    CompiledData::Unit header;
+    DWORD bytesRead;
+    if (!ReadFile(handle, reinterpret_cast<char *>(&header), sizeof(header), &bytesRead, nullptr)) {
+        *errorString = qt_error_string(GetLastError());
+        return nullptr;
+    }
+
+    if (bytesRead != sizeof(header)) {
+        *errorString = QStringLiteral("File too small for the header fields");
+        return nullptr;
+    }
+
+    if (!ExecutableCompilationUnit::verifyHeader(&header, sourceHash, errorString))
+        return nullptr;
+
+    // Data structure and qt version matched, so now we can access the rest of the file safely.
+
+    HANDLE fileMappingHandle = CreateFileMapping(handle, 0, PAGE_READONLY, 0, 0, 0);
+    if (!fileMappingHandle) {
+        *errorString = qt_error_string(GetLastError());
+        return nullptr;
+    }
+
+    auto mappingCleanup = qScopeGuard([fileMappingHandle]{
+        CloseHandle(fileMappingHandle);
+    });
+
+    dataPtr = MapViewOfFile(fileMappingHandle, FILE_MAP_READ, 0, 0, 0);
+    if (!dataPtr) {
+        *errorString = qt_error_string(GetLastError());
+        return nullptr;
+    }
+
+    return reinterpret_cast<CompiledData::Unit*>(dataPtr);
+}
 
 CompiledData::Unit *CompilationUnitMapper::open(const QString &cacheFileName, const QDateTime &sourceTimeStamp, QString *errorString)
 {

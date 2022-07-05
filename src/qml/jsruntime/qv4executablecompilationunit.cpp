@@ -739,6 +739,46 @@ void ExecutableCompilationUnit::evaluateModuleRequests()
     }
 }
 
+bool ExecutableCompilationUnit::loadFromDisk(const QUrl &url, const QCryptographicHash &sourceHash, QString *errorString)
+{
+    if (!QQmlFile::isLocalFile(url)) {
+        *errorString = QStringLiteral("File has to be a local file.");
+        return false;
+    }
+
+    const QString sourcePath = QQmlFile::urlToLocalFileOrQrc(url);
+    QScopedPointer<CompilationUnitMapper> cacheFile(new CompilationUnitMapper());
+
+    const QStringList cachePaths = { sourcePath + QLatin1Char('c'), localCacheFilePath(url) };
+    for (const QString &cachePath : cachePaths) {
+        CompiledData::Unit *mappedUnit = cacheFile->open(cachePath, sourceHash, errorString);
+        if (!mappedUnit)
+            continue;
+
+        const CompiledData::Unit * const oldDataPtr
+                = (data && !(data->flags & QV4::CompiledData::Unit::StaticData)) ? data
+                                                                                     : nullptr;
+        const CompiledData::Unit *oldData = data;
+        auto dataPtrRevert = qScopeGuard([this, oldData](){
+            setUnitData(oldData);
+        });
+        setUnitData(mappedUnit);
+
+        if (data->sourceFileIndex != 0
+            && sourcePath != QQmlFile::urlToLocalFileOrQrc(stringAt(data->sourceFileIndex))) {
+            *errorString = QStringLiteral("QML source file has moved to a different location.");
+            continue;
+        }
+
+        dataPtrRevert.dismiss();
+        free(const_cast<CompiledData::Unit*>(oldDataPtr));
+        backingFile.reset(cacheFile.take());
+        return true;
+    }
+
+    return false;
+}
+
 bool ExecutableCompilationUnit::loadFromDisk(const QUrl &url, const QDateTime &sourceTimeStamp, QString *errorString)
 {
     if (!QQmlFile::isLocalFile(url)) {
@@ -925,6 +965,44 @@ QString ExecutableCompilationUnit::bindingValueAsScriptString(
     return (binding->type == CompiledData::Binding::Type_String)
             ? CompiledData::Binding::escapedString(stringAt(binding->stringIndex))
             : bindingValueAsString(binding);
+}
+
+bool ExecutableCompilationUnit::verifyHeader(
+        const CompiledData::Unit *unit, QCryptographicHash expectedSourceHash, QString *errorString)
+{
+    if (strncmp(unit->magic, CompiledData::magic_str, sizeof(unit->magic))) {
+        *errorString = QStringLiteral("Magic bytes in the header do not match");
+        return false;
+    }
+
+    if (unit->version != quint32(QV4_DATA_STRUCTURE_VERSION)) {
+        *errorString = QString::fromUtf8("V4 data structure version mismatch. Found %1 expected %2")
+                               .arg(unit->version, 0, 16).arg(QV4_DATA_STRUCTURE_VERSION, 0, 16);
+        return false;
+    }
+
+    if (unit->qtVersion != quint32(QT_VERSION)) {
+        *errorString = QString::fromUtf8("Qt version mismatch. Found %1 expected %2")
+                               .arg(unit->qtVersion, 0, 16).arg(QT_VERSION, 0, 16);
+        return false;
+    }
+
+    if (unit->sourceHash) {
+        if (expectedSourceTimeStamp.result() != unit->sourceHash.result()) {
+            *errorString = QStringLiteral("QML source file has a different time stamp than cached file.");
+            return false;
+        }
+    }
+
+#if defined(QML_COMPILE_HASH)
+    if (qstrcmp(qml_compile_hash, unit->libraryVersionHash) != 0) {
+        *errorString = QStringLiteral("QML library version mismatch. Expected compile hash does not match");
+        return false;
+    }
+#else
+#error "QML_COMPILE_HASH must be defined for the build of QtDeclarative to ensure version checking for cache files"
+#endif
+    return true;
 }
 
 bool ExecutableCompilationUnit::verifyHeader(

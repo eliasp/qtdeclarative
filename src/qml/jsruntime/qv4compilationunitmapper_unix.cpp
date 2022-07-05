@@ -42,6 +42,7 @@
 #include <sys/mman.h>
 #include <functional>
 #include <private/qcore_unix_p.h>
+#include <QCryptographicHash>
 #include <QScopeGuard>
 #include <QDateTime>
 
@@ -50,6 +51,45 @@
 QT_BEGIN_NAMESPACE
 
 using namespace QV4;
+
+CompiledData::Unit *CompilationUnitMapper::open(const QString &cacheFileName, const QCryptographicHash &sourceHash, QString *errorString)
+{
+    close();
+
+    int fd = qt_safe_open(QFile::encodeName(cacheFileName).constData(), O_RDONLY);
+    if (fd == -1) {
+        *errorString = qt_error_string(errno);
+        return nullptr;
+    }
+
+    auto cleanup = qScopeGuard([fd]{
+       qt_safe_close(fd) ;
+    });
+
+    CompiledData::Unit header;
+    qint64 bytesRead = qt_safe_read(fd, reinterpret_cast<char *>(&header), sizeof(header));
+
+    if (bytesRead != sizeof(header)) {
+        *errorString = QStringLiteral("File too small for the header fields");
+        return nullptr;
+    }
+
+    if (!ExecutableCompilationUnit::verifyHeader(&header, sourceHash, errorString))
+        return nullptr;
+
+    // Data structure and qt version matched, so now we can access the rest of the file safely.
+
+    length = static_cast<size_t>(lseek(fd, 0, SEEK_END));
+
+    void *ptr = mmap(nullptr, length, PROT_READ, MAP_SHARED, fd, /*offset*/0);
+    if (ptr == MAP_FAILED) {
+        *errorString = qt_error_string(errno);
+        return nullptr;
+    }
+    dataPtr = ptr;
+
+    return reinterpret_cast<CompiledData::Unit*>(dataPtr);
+}
 
 CompiledData::Unit *CompilationUnitMapper::open(const QString &cacheFileName, const QDateTime &sourceTimeStamp, QString *errorString)
 {

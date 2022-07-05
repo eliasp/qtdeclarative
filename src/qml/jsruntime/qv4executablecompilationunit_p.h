@@ -273,6 +273,7 @@ public:
 
     void markObjects(MarkStack *markStack);
 
+    bool loadFromDisk(const QUrl &url, const QCryptographicHash &sourceHash, QString *errorString);
     bool loadFromDisk(const QUrl &url, const QDateTime &sourceTimeStamp, QString *errorString);
 
     static QString localCacheFilePath(const QUrl &url);
@@ -288,6 +289,8 @@ public:
     }
 
     static bool verifyHeader(const CompiledData::Unit *unit, QDateTime expectedSourceTimeStamp,
+                             QString *errorString);
+    static bool verifyHeader(const CompiledData::Unit *unit, QCryptographicHash expectedSourceHash,
                              QString *errorString);
 
 protected:

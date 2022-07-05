@@ -68,6 +68,7 @@ public:
     CompilationUnitMapper();
     ~CompilationUnitMapper();
 
+    CompiledData::Unit *open(const QString &cacheFilePath, const QCryptographicHash &sourceHash, QString *errorString);
     CompiledData::Unit *open(const QString &cacheFilePath, const QDateTime &sourceTimeStamp, QString *errorString);
     void close();
 

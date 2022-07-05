@@ -45,6 +45,7 @@
 #include <private/qqmlsourcecoordinate_p.h>
 
 #include <QtQml/qqmlengine.h>
+#include <QtCore/QCryptographicHash>
 
 #include <qtqml_tracepoints_p.h>
 
@@ -627,6 +628,14 @@ QDateTime QQmlDataBlob::SourceCodeData::sourceTimeStamp() const
         return QDateTime();
 
     return fileInfo.lastModified();
+}
+
+QCryptographicHash QQmlDataBlob::SourceCodeData::sourceHash() const
+{
+    if (hasInlineSourceCode)
+        return QCryptographicHash::hash(inlineSourceCode, QCryptographicHash::Sha256);
+
+    return QCryptographicHash::hash(data, QCryptographicHash::Sha256);
 }
 
 bool QQmlDataBlob::SourceCodeData::exists() const

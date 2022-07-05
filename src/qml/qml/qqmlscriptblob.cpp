@@ -73,7 +73,7 @@ void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
         QQmlRefPointer<QV4::ExecutableCompilationUnit> unit
                 = QV4::ExecutableCompilationUnit::create();
         QString error;
-        if (unit->loadFromDisk(url(), data.sourceTimeStamp(), &error)) {
+        if (unit->loadFromDisk(url(), data.sourceHash(), &error)) {
             initializeFromCompilationUnit(unit);
             return;
         } else {
@@ -137,7 +137,7 @@ void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
         QString errorString;
         if (executableUnit->saveToDisk(url(), &errorString)) {
             QString error;
-            if (!executableUnit->loadFromDisk(url(), data.sourceTimeStamp(), &error)) {
+            if (!executableUnit->loadFromDisk(url(), data.sourceHash(), &error)) {
                 // ignore error, keep using the in-memory compilation unit.
             }
         } else {

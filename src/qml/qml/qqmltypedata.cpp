@@ -143,7 +143,7 @@ bool QQmlTypeData::tryLoadFromDiskCache()
     QQmlRefPointer<QV4::ExecutableCompilationUnit> unit = QV4::ExecutableCompilationUnit::create();
     {
         QString error;
-        if (!unit->loadFromDisk(url(), m_backupSourceCode.sourceTimeStamp(), &error)) {
+        if (!unit->loadFromDisk(url(), m_backupSourceCode.sourceHash(), &error)) {
             qCDebug(DBG_DISK_CACHE) << "Error loading" << urlString() << "from disk cache:" << error;
             return false;
         }
@@ -786,7 +786,7 @@ void QQmlTypeData::compile(const QQmlRefPointer<QQmlTypeNameCache> &typeNameCach
         QString errorString;
         if (m_compiledData->saveToDisk(url(), &errorString)) {
             QString error;
-            if (!m_compiledData->loadFromDisk(url(), m_backupSourceCode.sourceTimeStamp(), &error)) {
+            if (!m_compiledData->loadFromDisk(url(), m_backupSourceCode.sourceHash(), &error)) {
                 // ignore error, keep using the in-memory compilation unit.
             }
         } else {

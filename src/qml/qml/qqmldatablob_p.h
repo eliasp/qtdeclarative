@@ -62,6 +62,7 @@
 #include <QtQml/qqmlerror.h>
 #include <QtQml/qqmlabstracturlinterceptor.h>
 
+#include <QtCore/qcryptographichash.h>
 #include <QtCore/qdatetime.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qurl.h>
@@ -117,6 +118,7 @@ public:
     public:
         QString readAll(QString *error) const;
         QDateTime sourceTimeStamp() const;
+        QCryptographicHash sourceHash() const;
         bool exists() const;
         bool isEmpty() const;
     private:
